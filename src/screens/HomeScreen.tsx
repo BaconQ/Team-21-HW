@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Keyboard, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Animated, Keyboard, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -11,6 +11,7 @@ import { COLORS, FONTS, SPACING, SIZES } from '../components/theme';
 import { PetType } from '../types';
 import { ChatMessage } from '../types/index';
 import { usePet } from '../hooks/usePet';
+import { sendMessageToLLM } from '../services/llmService';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android') {
@@ -46,36 +47,101 @@ export function HomeScreen() {
     exercisePet, 
     playWithPet,
     getPetMood,
-    customizePet
+    customizePet,
+    applyStatChanges
   } = usePet();
   
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      text: 'Hi! I\'m DigiPal. How are you today?',
-      sender: 'PET',
-      timestamp: new Date(),
-    },
-  ]);
-
-  // State for text streaming
-  const [streamingText, setStreamingText] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTalking, setIsTalking] = useState(false);
-  const fullMessageRef = useRef('');
-  const charIndexRef = useRef(0);
-
+  const [isLoading, setIsLoading] = useState(false);
+  
   const scrollViewRef = useRef<ScrollView>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
-  const MAX_VISIBLE_MESSAGES = 2;
+  const MAX_VISIBLE_MESSAGES = 5;
 
   // Add keyboard state
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
-  // On mount, set the default pet type (cat)
+  // Animation for loading dots
+  const loadingAnim = useRef(new Animated.Value(0.3)).current;
+  
+  // Set up loading animation
+  useEffect(() => {
+    // Create a looping animation for loading dots
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(loadingAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(loadingAnim, {
+          toValue: 0.3,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+    
+    return () => {
+      // Clean up animation
+      loadingAnim.stopAnimation();
+    };
+  }, [loadingAnim]);
+
+  // On mount, set the default pet type and get initial greeting
   useEffect(() => {
     customizePet({ type: PetType.CAT });
+    
+    // Get initial greeting
+    getInitialGreeting();
   }, []);
+
+  // Fetch initial greeting from LLM
+  const getInitialGreeting = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Add a temporary greeting while loading
+      setMessages([{
+        id: 'loading',
+        text: '',
+        sender: 'PET',
+        timestamp: new Date(),
+        isLoading: true
+      }]);
+      
+      // Call LLM with empty string for initial greeting
+      const llmResponse = await sendMessageToLLM('Hello');
+      
+      // Apply any initial stat changes
+      if (llmResponse.changes && llmResponse.changes.length > 0) {
+        applyStatChanges(llmResponse.changes);
+      }
+      
+      // Replace loading message with actual messages
+      const initialMessages = llmResponse.messages.map((text, index) => ({
+        id: `initial-${index}`,
+        text,
+        sender: 'PET' as const,
+        timestamp: new Date(Date.now() + index * 100),
+      }));
+      
+      setMessages(initialMessages);
+    } catch (error) {
+      console.error("Error getting initial greeting:", error);
+      
+      // Fallback greeting if API fails
+      setMessages([{
+        id: 'initial-fallback',
+        text: "Hello! I'm DigiPal. How can I help you today?",
+        sender: 'PET',
+        timestamp: new Date()
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Trim old messages and keep only the most recent ones
   useEffect(() => {
@@ -99,37 +165,7 @@ export function HomeScreen() {
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
-  }, [messages, streamingText]);
-
-  // Streaming text effect
-  useEffect(() => {
-    if (isStreaming && charIndexRef.current < fullMessageRef.current.length) {
-      // Show pet talking animation during streaming
-      setIsTalking(true);
-      
-      const timeoutId = setTimeout(() => {
-        setStreamingText(fullMessageRef.current.substring(0, charIndexRef.current + 1));
-        charIndexRef.current += 1;
-      }, 50); // Control the speed of the typing
-
-      return () => clearTimeout(timeoutId);
-    } else if (isStreaming && charIndexRef.current >= fullMessageRef.current.length) {
-      // Streaming finished
-      setIsStreaming(false);
-      setIsTalking(false);
-      
-      // Add the full message to the messages state
-      const newMessage: ChatMessage = {
-        id: Date.now().toString(),
-        text: fullMessageRef.current,
-        sender: 'PET',
-        timestamp: new Date(),
-      };
-      
-      setMessages(prev => [...prev, newMessage]);
-      setStreamingText('');
-    }
-  }, [isStreaming, streamingText]);
+  }, [messages]);
 
   // Add keyboard listeners with layout animation
   useEffect(() => {
@@ -177,7 +213,7 @@ export function HomeScreen() {
     };
   }, []);
 
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = async (text: string) => {
     // Add user message
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -188,31 +224,66 @@ export function HomeScreen() {
     
     setMessages((prev) => [...prev, userMessage]);
     
-    // Prepare to stream AI response
-    setTimeout(() => {
-      const response = getRandomResponse(text);
-      fullMessageRef.current = response;
-      charIndexRef.current = 0;
-      setIsStreaming(true);
-    }, 500);
-  };
-
-  // Get pet responses (now just a single set for the cat pet)
-  const getRandomResponse = (input: string) => {
-    const responses = [
-      `*purrs* I like talking about ${input}!`,
-      `Meow! That's interesting. Tell me more!`,
-      `*tilts head* I'm curious about ${input} too!`,
-      `*blinks slowly* ${input}? That sounds fun!`,
-      `If I could try ${input}, I would pounce on it!`,
-      `That's fascinating! Tell me more about ${input}.`,
-      `I've been thinking about ${input} too!`,
-      `${input} sounds like something I'd enjoy.`,
-      `*perks up* Ooh, ${input}? I like that!`,
-      `You always have the most interesting things to say about ${input}!`
-    ];
+    // Add a temporary thinking message
+    const thinkingId = `thinking-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev, 
+      {
+        id: thinkingId,
+        text: '',
+        sender: 'PET',
+        timestamp: new Date(),
+        isLoading: true
+      }
+    ]);
     
-    return responses[Math.floor(Math.random() * responses.length)];
+    try {
+      // Show talking animation
+      setIsTalking(true);
+      
+      // Call the LLM API
+      const llmResponse = await sendMessageToLLM(text);
+      
+      // Hide talking animation
+      setIsTalking(false);
+      
+      // Remove the thinking message
+      setMessages((prev) => prev.filter(msg => msg.id !== thinkingId));
+      
+      // Apply any stat changes returned by the API
+      if (llmResponse.changes && llmResponse.changes.length > 0) {
+        applyStatChanges(llmResponse.changes);
+      }
+      
+      // Add all response messages
+      const responseMessages = llmResponse.messages.map((messageText, index) => ({
+        id: `${Date.now()}-${index}`,
+        text: messageText,
+        sender: 'PET' as const,
+        timestamp: new Date(Date.now() + index * 100),
+      }));
+      
+      setMessages(prev => [...prev, ...responseMessages]);
+      
+    } catch (error) {
+      console.error("Error processing LLM response:", error);
+      
+      // Remove thinking bubble
+      setMessages((prev) => prev.filter(msg => msg.id !== thinkingId));
+      
+      // Add a fallback message if something goes wrong
+      const errorMessage: ChatMessage = {
+        id: Date.now().toString(),
+        text: "I'm having trouble connecting right now. Can you try again?",
+        sender: 'PET',
+        timestamp: new Date(),
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+      
+      // Hide talking animation
+      setIsTalking(false);
+    }
   };
 
   const handleStatIconPress = (type: 'FOOD' | 'WATER' | 'ACTIVITY' | 'MOOD') => {
@@ -233,7 +304,7 @@ export function HomeScreen() {
   };
 
   const handleSettingsPress = () => {
-    // Change pet's color instead of type
+    // Change pet's color
     const colors = ['#E1EEBC', '#FFC0CB', '#ADD8E6', '#FFD700', '#98FB98']; 
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
     customizePet({ color: randomColor });
@@ -267,7 +338,6 @@ export function HomeScreen() {
             keyboardVisible && styles.compactTitle
           ]}>DigiPal</Text>
           <View style={{flexDirection: 'row'}}>
-            <IconButton type="stats" onPress={handleStatsPress} />
             <IconButton type="settings" onPress={handleSettingsPress} />
           </View>
         </View>
@@ -328,34 +398,31 @@ export function HomeScreen() {
                   styles.messageBubble,
                   message.sender === 'USER' ? styles.userMessage : styles.petMessage,
                   isOldMessage && { opacity: fadeAnim },
+                  message.isLoading && styles.loadingMessage,
                 ]}
               >
-                <Text style={[
-                  styles.messageText,
-                  message.sender === 'USER' ? styles.userMessageText : styles.petMessageText
-                ]}>
-                  {message.text}
-                </Text>
+                {message.isLoading ? (
+                  <View style={styles.loadingContainer}>
+                    <Animated.Text 
+                      style={[
+                        styles.loadingText,
+                        { opacity: loadingAnim }
+                      ]}
+                    >
+                      . . .
+                    </Animated.Text>
+                  </View>
+                ) : (
+                  <Text style={[
+                    styles.messageText,
+                    message.sender === 'USER' ? styles.userMessageText : styles.petMessageText
+                  ]}>
+                    {message.text}
+                  </Text>
+                )}
               </Animated.View>
             );
           })}
-          
-          {/* Streaming message */}
-          {isStreaming && (
-            <View style={[styles.messageBubble, styles.petMessage]}>
-              <Text style={[styles.messageText, styles.petMessageText]}>
-                {streamingText}
-                <Animated.Text 
-                  style={[
-                    styles.cursor, 
-                    { opacity: fadeAnim }
-                  ]}
-                >
-                  █
-                </Animated.Text>
-              </Text>
-            </View>
-          )}
         </ScrollView>
         
         {/* Chat Input */}
@@ -489,14 +556,22 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 0,
   },
-  cursor: {
-    opacity: 1,
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.md,
+  },
+  loadingText: {
     fontFamily: FONTS.retro,
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 16,
     color: COLORS.primary,
-    textShadowColor: 'rgba(50, 142, 110, 0.7)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 0,
+    textAlign: 'center',
+  },
+  loadingMessage: {
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderColor: COLORS.accent,
+    borderWidth: 2,
   },
 }); 

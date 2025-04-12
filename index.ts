@@ -1,3 +1,6 @@
+// Import Buffer polyfill
+import './global';
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';

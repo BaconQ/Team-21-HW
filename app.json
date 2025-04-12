@@ -16,21 +16,42 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.digipal"
+      "bundleIdentifier": "com.yourcompany.digipal",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "DigiPal needs access to your microphone so you can talk to your virtual pet",
+        "NSSpeechRecognitionUsageDescription": "DigiPal needs speech recognition to understand what you're saying"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#328E6E"
       },
-      "package": "com.yourcompany.digipal"
+      "package": "com.yourcompany.digipal",
+      "permissions": [
+        "RECORD_AUDIO",
+        "INTERNET"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "DigiPal needs access to your microphone to enable voice interactions"
+        }
+      ],
+      "expo-file-system"
     ],
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    },
+    "owner": "your-expo-username",
     "newArchEnabled": true
   }
 }

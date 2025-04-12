@@ -34,6 +34,19 @@ export interface ChatMessage {
   text: string;
   sender: 'USER' | 'PET';
   timestamp: Date;
+  audioUrl?: string; // URL to the audio file for this message
+  isPlaying?: boolean; // Whether the audio is currently playing
+  isLoading?: boolean; // Whether the message is loading (waiting for audio)
+}
+
+export interface StatChange {
+  attribute: string; // "food", "water", "activity", "happiness", etc.
+  value: number; // Positive for increase, negative for decrease
+}
+
+export interface LLMResponse {
+  messages: string[]; // Array of message texts
+  changes: StatChange[]; // Array of stat changes
 }
 
 export type ThemeColors = {

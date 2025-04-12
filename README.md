@@ -1,6 +1,6 @@
-# DigiPal
+# DigiPal - Voice-Enabled Virtual Pet
 
-A Tamagotchi-style mobile app with AI conversation features, built with React Native and Expo.
+DigiPal is a virtual pet app with speech recognition and text-to-speech capabilities, allowing for a more immersive interaction experience.
 
 ## Features
 
@@ -19,6 +19,31 @@ A Tamagotchi-style mobile app with AI conversation features, built with React Na
 - Primary: #328E6E (Green)
 - Secondary: #E1EEBC (Light yellow/green)
 - White for clean UI elements
+
+## Voice Features
+
+### Text-to-Speech (TTS)
+
+DigiPal uses Eleven Labs for high-quality text-to-speech synthesis. Your virtual pet can speak to you using a natural-sounding voice.
+
+- **Toggle TTS**: Use the audio icon in the top right corner to turn TTS on or off
+- **Auto-Play**: When enabled, your pet will automatically speak all its messages
+
+### Speech-to-Text (STT)
+
+Talk to your DigiPal using your voice instead of typing.
+
+- **Start Voice Recognition**: Tap the microphone icon in the chat input
+- **End Recording**: Tap the microphone icon again when you're done speaking
+- **Send Message**: Your spoken text will appear in the input field - tap send to communicate with your pet
+
+## API Keys
+
+This app uses Eleven Labs for TTS. The API key in the code is a placeholder and should be replaced with your own key for production use:
+
+1. Sign up at [Eleven Labs](https://elevenlabs.io/)
+2. Get your API key from the dashboard
+3. Replace the API key in `src/services/elevenLabsService.ts`
 
 ## Getting Started
 
@@ -68,3 +93,25 @@ npm start
 ## License
 
 This project is licensed under the MIT License 
+
+## Technologies Used
+
+- Expo/React Native
+- TypeScript
+- Eleven Labs API for TTS
+- React Native Voice for STT
+- Expo Audio for sound playback
+
+## Troubleshooting
+
+### Speech Recognition Issues
+
+- Ensure microphone permissions are granted
+- Check that your device has a working microphone
+- Try restarting the app if recognition is inconsistent
+
+### Text-to-Speech Issues
+
+- Verify your API key is correct and has sufficient credits
+- Check your internet connection (TTS requires API calls)
+- Ensure device volume is turned up 

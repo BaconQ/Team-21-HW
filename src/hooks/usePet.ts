@@ -9,11 +9,11 @@ const DEFAULT_PET: Pet = {
   type: PetType.CAT,
   color: '#E1EEBC',
   stats: {
-    hunger: 70,
-    hydration: 80,
-    activity: 60,
-    mood: 85,
-    health: 90,
+    hunger: 100,
+    hydration: 100,
+    activity: 100,
+    mood: 100,
+    health: 100,
   },
   lastInteraction: new Date(),
 };
@@ -65,35 +65,73 @@ export function usePet() {
     return () => clearInterval(interval);
   }, []);
 
-  // Feed the pet (increase hunger stat)
-  const feedPet = (amount: number = 15) => {
-    updateStat('hunger', amount);
-    addLog('FOOD', amount);
+  // Apply stat changes from backend
+  const applyStatChanges = (changes: Array<{attribute: string, value: number}>) => {
+    if (!changes || changes.length === 0) return;
+    
+    setPet((currentPet) => {
+      const newStats = { ...currentPet.stats };
+      
+      changes.forEach(change => {
+        switch (change.attribute) {
+          case 'food':
+          case 'hunger':
+            newStats.hunger = Math.max(0, Math.min(100, newStats.hunger + change.value));
+            addLog('FOOD', change.value);
+            break;
+          case 'water':
+          case 'hydration':
+            newStats.hydration = Math.max(0, Math.min(100, newStats.hydration + change.value));
+            addLog('WATER', change.value);
+            break;
+          case 'activity':
+          case 'energy':
+            newStats.activity = Math.max(0, Math.min(100, newStats.activity + change.value));
+            addLog('ACTIVITY', change.value);
+            break;
+          case 'happiness':
+          case 'mood':
+            newStats.mood = Math.max(0, Math.min(100, newStats.mood + change.value));
+            addLog('MOOD', change.value);
+            break;
+        }
+      });
+      
+      // Update health based on overall well-being
+      const avgStats = (newStats.hunger + newStats.hydration + newStats.activity + newStats.mood) / 4;
+      newStats.health = Math.max(0, Math.min(100, avgStats * 0.6 + newStats.health * 0.4));
+      
+      return {
+        ...currentPet,
+        stats: newStats,
+        lastInteraction: new Date(),
+      };
+    });
   };
 
-  // Give water to pet (increase hydration stat)
-  const hydratePet = (amount: number = 20) => {
-    updateStat('hydration', amount);
-    addLog('WATER', amount);
+  // These functions are kept for backward compatibility but won't actively change stats
+  // The backend will control stat changes
+  const feedPet = () => {
+    // No-op - stats are controlled by backend now
   };
 
-  // Exercise with pet (increase activity stat)
-  const exercisePet = (amount: number = 15) => {
-    updateStat('activity', amount);
-    addLog('ACTIVITY', amount);
+  const hydratePet = () => {
+    // No-op - stats are controlled by backend now
   };
 
-  // Play with pet (increase mood stat)
-  const playWithPet = (amount: number = 10) => {
-    updateStat('mood', amount);
-    addLog('MOOD', amount);
+  const exercisePet = () => {
+    // No-op - stats are controlled by backend now
+  };
+
+  const playWithPet = () => {
+    // No-op - stats are controlled by backend now
   };
   
-  // Update a specific stat
+  // Update a specific stat (for internal use)
   const updateStat = (stat: keyof PetStats, amount: number) => {
     setPet((currentPet) => {
       const newStats = { ...currentPet.stats };
-      newStats[stat] = Math.min(100, currentPet.stats[stat] + amount);
+      newStats[stat] = Math.max(0, Math.min(100, currentPet.stats[stat] + amount));
       
       // Update health based on overall well-being
       const avgStats = (newStats.hunger + newStats.hydration + newStats.activity + newStats.mood) / 4;
@@ -147,5 +185,6 @@ export function usePet() {
     updateStat,
     customizePet,
     getPetMood,
+    applyStatChanges,
   };
 } 
