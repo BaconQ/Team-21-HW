@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Animated, Keyboard, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Animated, Keyboard, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager, Modal, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -13,6 +13,7 @@ import { ChatMessage } from '../types/index';
 import { usePet } from '../hooks/usePet';
 import { sendMessageToLLM } from '../services/llmService';
 import { speakText, stopSpeech } from '../services/elevenLabsService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android') {
@@ -20,6 +21,9 @@ if (Platform.OS === 'android') {
     UIManager.setLayoutAnimationEnabledExperimental(true);
   }
 }
+
+// Key for onboarding status in AsyncStorage
+const ONBOARDING_COMPLETE_KEY = 'digipal_onboarding_complete';
 
 // Helper function to adjust color brightness
 function adjustColorBrightness(color: string, amount: number): string {
@@ -58,6 +62,7 @@ export function HomeScreen() {
   const [ttsEnabled, setTtsEnabled] = useState(true); // Enable TTS by default
   const [typingMessage, setTypingMessage] = useState<{text: string, id: string} | null>(null);
   const [typedText, setTypedText] = useState('');
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const typingSpeed = 50; // milliseconds per character
   
   const scrollViewRef = useRef<ScrollView>(null);
@@ -478,6 +483,11 @@ export function HomeScreen() {
   };
 
   const handleSettingsPress = () => {
+    // Show settings modal
+    setShowSettingsModal(true);
+  };
+
+  const toggleTTS = () => {
     // Toggle TTS on/off
     setTtsEnabled(!ttsEnabled);
     
@@ -490,6 +500,23 @@ export function HomeScreen() {
   const handleStatsPress = () => {
     // TODO: Open stats screen
     console.log('Stats pressed');
+  };
+
+  const resetApp = async () => {
+    try {
+      // Clear onboarding status to see splash screen again
+      await AsyncStorage.removeItem(ONBOARDING_COMPLETE_KEY);
+      
+      // Force reload the app
+      if (Platform.OS === 'web') {
+        window.location.reload();
+      } else {
+        // For native, we'll have to restart the app manually
+        alert('Please restart the app to see the splash screen');
+      }
+    } catch (error) {
+      console.error('Error resetting app:', error);
+    }
   };
 
   return (
@@ -614,6 +641,43 @@ export function HomeScreen() {
         {/* Chat Input */}
         <ChatInput onSendMessage={handleSendMessage} />
       </KeyboardAvoidingView>
+      
+      {/* Settings Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showSettingsModal}
+        onRequestClose={() => setShowSettingsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Settings</Text>
+            
+            <TouchableOpacity 
+              style={styles.settingOption} 
+              onPress={toggleTTS}
+            >
+              <Text style={styles.settingText}>
+                {ttsEnabled ? 'Turn Off Voice' : 'Turn On Voice'}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.settingOption} 
+              onPress={resetApp}
+            >
+              <Text style={styles.settingText}>Show Splash Screen</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.closeButton} 
+              onPress={() => setShowSettingsModal(false)}
+            >
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -759,5 +823,60 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.8)',
     borderColor: COLORS.accent,
     borderWidth: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    width: '80%',
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+    padding: SPACING.lg,
+    borderWidth: 3,
+    borderColor: COLORS.secondary,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontFamily: FONTS.title,
+    fontSize: 24,
+    color: COLORS.secondary,
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.7)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 0,
+  },
+  settingOption: {
+    width: '100%',
+    paddingVertical: SPACING.md,
+    marginVertical: SPACING.sm,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+  },
+  settingText: {
+    fontFamily: FONTS.retro,
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  closeButton: {
+    marginTop: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: COLORS.secondary,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: adjustColorBrightness(COLORS.secondary, -50),
+  },
+  closeButtonText: {
+    fontFamily: FONTS.title,
+    fontSize: 16,
+    color: COLORS.primary,
+    textTransform: 'uppercase',
   },
 }); 
