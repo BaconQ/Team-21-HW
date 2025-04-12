@@ -18,6 +18,13 @@ interface PetPixelArtProps {
   isTalking?: boolean;
 }
 
+// Define a Pixel type interface
+interface PixelData {
+  x: number;
+  y: number;
+  color: string;
+}
+
 // A simple pixel component
 const Pixel = ({ x, y, color, size = 12 }: PixelProps) => (
   <View
@@ -58,7 +65,7 @@ export function PetPixelArt({ type, color = '#E1EEBC', pixelSize = 14, hatColor,
   const DETAIL_COLOR = adjustColorBrightness(BODY_COLOR, -30);
   
   // Create pixel array
-  const pixels = [];
+  const pixels: PixelData[] = [];
   
   // Choose animal pixel map based on type
   switch (type) {
@@ -116,12 +123,12 @@ export function PetPixelArt({ type, color = '#E1EEBC', pixelSize = 14, hatColor,
 }
 
 // Cat rendering function
-function renderCat(pixels: {x: number, y: number, color: string}[], bodyColor: string, borderColor: string, detailColor: string, isTalking: boolean) {
+function renderCat(pixels: PixelData[], bodyColor: string, borderColor: string, detailColor: string, isTalking: boolean) {
   // Border outline (black pixels)
   const borderCoordinates = [
-    // Top row (head top)
+    // Top row (head top) - rounder edges for cuter look
     [3, 0], [4, 0], [8, 0], [9, 0],
-    // Row 1
+    // Row 1 - smoother curve
     [2, 1], [5, 1], [6, 1], [7, 1], [10, 1],
     // Row 2 edges
     [1, 2], [11, 2],
@@ -145,22 +152,36 @@ function renderCat(pixels: {x: number, y: number, color: string}[], bodyColor: s
     [3, 15], [5, 15], [7, 15], [9, 15],
   ];
 
-  // Eyes (black)
+  // Bigger, rounder eyes for kawaii look
   const eyesCoordinates = [
-    [3, 5], [4, 5], // Left eye
-    [8, 5], [9, 5], // Right eye
+    [3, 4], [4, 4], // Left eye upper
+    [3, 5], [4, 5], // Left eye lower
+    [8, 4], [9, 4], // Right eye upper
+    [8, 5], [9, 5], // Right eye lower
   ];
 
-  // Facial features - change mouth based on talking state
+  // Add eye shine for cuteness
+  const eyeShineCoordinates = [
+    [4, 4], // Left eye shine
+    [9, 4], // Right eye shine
+  ];
+
+  // Blush marks for extra cuteness
+  const blushCoordinates = [
+    [2, 6], // Left cheek
+    [10, 6], // Right cheek
+  ];
+
+  // Facial features - cuter mouth
   const mouthCoordinates = isTalking 
     ? [
         [5, 7], [6, 8], [7, 7] // Open mouth
       ]
     : [
-        [5, 8], [6, 8], [7, 8] // Closed mouth
+        [6, 7], [5, 8], [6, 8], [7, 8] // Cute w-shaped mouth
       ];
   
-  // Add the nose
+  // Cuter nose
   const noseCoordinates = [[6, 6]];
 
   // Fill all border pixels
@@ -168,9 +189,19 @@ function renderCat(pixels: {x: number, y: number, color: string}[], bodyColor: s
     pixels.push({ x, y, color: borderColor });
   });
 
-  // Fill all eye pixels
+  // Fill all eye pixels with black
   eyesCoordinates.forEach(([x, y]) => {
     pixels.push({ x, y, color: borderColor });
+  });
+
+  // Add white eye shine
+  eyeShineCoordinates.forEach(([x, y]) => {
+    pixels.push({ x, y, color: '#FFFFFF' });
+  });
+
+  // Add blush marks with a pink color
+  blushCoordinates.forEach(([x, y]) => {
+    pixels.push({ x, y, color: '#FFA0A0' });
   });
 
   // Fill facial feature pixels
@@ -193,13 +224,15 @@ function renderCat(pixels: {x: number, y: number, color: string}[], bodyColor: s
     }
 
     for (let x = startX; x <= endX; x++) {
-      // Skip if this position is already filled (eyes, nose, border)
+      // Skip if this position is already filled (eyes, nose, border, blush)
       const isEye = eyesCoordinates.some(([ex, ey]) => ex === x && ey === y);
+      const isEyeShine = eyeShineCoordinates.some(([ex, ey]) => ex === x && ey === y);
+      const isBlush = blushCoordinates.some(([bx, by]) => bx === x && by === y);
       const isMouth = mouthCoordinates.some(([mx, my]) => mx === x && my === y);
       const isNose = noseCoordinates.some(([nx, ny]) => nx === x && ny === y);
       const isBorder = borderCoordinates.some(([bx, by]) => bx === x && by === y);
       
-      if (!isEye && !isMouth && !isNose && !isBorder) {
+      if (!isEye && !isEyeShine && !isBlush && !isMouth && !isNose && !isBorder) {
         pixels.push({ x, y, color: bodyColor });
       }
     }
@@ -223,7 +256,7 @@ function renderCat(pixels: {x: number, y: number, color: string}[], bodyColor: s
 }
 
 // Dog rendering function
-function renderDog(pixels: {x: number, y: number, color: string}[], bodyColor: string, borderColor: string, detailColor: string, isTalking: boolean) {
+function renderDog(pixels: PixelData[], bodyColor: string, borderColor: string, detailColor: string, isTalking: boolean) {
   // Border outline
   const borderCoordinates = [
     // Head top with ears
@@ -323,7 +356,7 @@ function renderDog(pixels: {x: number, y: number, color: string}[], bodyColor: s
 }
 
 // Bunny rendering function
-function renderBunny(pixels: {x: number, y: number, color: string}[], bodyColor: string, borderColor: string, detailColor: string, isTalking: boolean) {
+function renderBunny(pixels: PixelData[], bodyColor: string, borderColor: string, detailColor: string, isTalking: boolean) {
   // Border outline
   const borderCoordinates = [
     // Long ears

@@ -3,6 +3,25 @@ import { View, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { Svg, Path } from 'react-native-svg';
 import { COLORS, SIZES, FONTS, SPACING } from './theme';
 
+// Helper function to adjust color brightness
+function adjustColorBrightness(color: string, amount: number): string {
+  // Remove # if present
+  color = color.replace('#', '');
+  
+  // Parse the hex values
+  const r = parseInt(color.substring(0, 2), 16);
+  const g = parseInt(color.substring(2, 4), 16);
+  const b = parseInt(color.substring(4, 6), 16);
+  
+  // Adjust brightness
+  const newR = Math.max(0, Math.min(255, r + amount));
+  const newG = Math.max(0, Math.min(255, g + amount));
+  const newB = Math.max(0, Math.min(255, b + amount));
+  
+  // Convert back to hex
+  return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+}
+
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
 }
@@ -51,11 +70,16 @@ const styles = StyleSheet.create({
     flex: 1,
     height: SIZES.inputHeight,
     backgroundColor: '#FFFFFF',
-    borderRadius: SIZES.borderRadius,
+    borderRadius: 8,
     paddingHorizontal: SPACING.md,
     marginRight: SPACING.md,
-    fontFamily: FONTS.regular,
-    fontSize: 18,
+    fontFamily: FONTS.silkscreen,
+    fontSize: 16,
+    letterSpacing: 1,
+    color: '#333333',
+    borderWidth: 3,
+    borderColor: '#CCCCCC',
+    borderStyle: 'solid',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -66,13 +90,16 @@ const styles = StyleSheet.create({
     width: SIZES.buttonHeight,
     height: SIZES.buttonHeight,
     backgroundColor: COLORS.secondary,
-    borderRadius: SIZES.borderRadius,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 3,
+    borderColor: adjustColorBrightness(COLORS.secondary, -50),
+    borderStyle: 'solid',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 0,
     elevation: 3,
   },
 }); 

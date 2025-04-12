@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Pet, PetType, PetStats, StatsLog } from '../types';
+import { PetType } from '../types';
+import { Pet, PetStats, StatsLog } from '../types/index';
 
 // Initial pet configuration
 const DEFAULT_PET: Pet = {
   id: '1',
-  name: 'Pixel',
+  name: 'DigiPal',
   type: PetType.CAT,
   color: '#E1EEBC',
   stats: {

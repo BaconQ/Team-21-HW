@@ -1,7 +1,7 @@
 export enum PetType {
-  CAT = 'CAT',
-  DOG = 'DOG',
-  BUNNY = 'BUNNY'
+  CAT = 'cat',
+  DOG = 'dog',
+  BUNNY = 'bunny'
 }
 
 export interface PetData {

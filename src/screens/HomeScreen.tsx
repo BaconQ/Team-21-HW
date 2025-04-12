@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Keyboard, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { ChatInput } from '../components/ChatInput';
@@ -7,8 +8,35 @@ import { StatsIcon } from '../components/StatsIcon';
 import { PixelPet } from '../components/PixelPet';
 import { IconButton } from '../components/HeaderIcons';
 import { COLORS, FONTS, SPACING, SIZES } from '../components/theme';
-import { ChatMessage, PetType } from '../types';
+import { PetType } from '../types';
+import { ChatMessage } from '../types/index';
 import { usePet } from '../hooks/usePet';
+
+// Enable LayoutAnimation for Android
+if (Platform.OS === 'android') {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
+
+// Helper function to adjust color brightness
+function adjustColorBrightness(color: string, amount: number): string {
+  // Remove # if present
+  color = color.replace('#', '');
+  
+  // Parse the hex values
+  const r = parseInt(color.substring(0, 2), 16);
+  const g = parseInt(color.substring(2, 4), 16);
+  const b = parseInt(color.substring(4, 6), 16);
+  
+  // Adjust brightness
+  const newR = Math.max(0, Math.min(255, r + amount));
+  const newG = Math.max(0, Math.min(255, g + amount));
+  const newB = Math.max(0, Math.min(255, b + amount));
+  
+  // Convert back to hex
+  return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+}
 
 export function HomeScreen() {
   const { 
@@ -24,7 +52,7 @@ export function HomeScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
-      text: 'Hi! I\'m Pixel. How are you today?',
+      text: 'Hi! I\'m DigiPal. How are you today?',
       sender: 'PET',
       timestamp: new Date(),
     },
@@ -41,11 +69,12 @@ export function HomeScreen() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const MAX_VISIBLE_MESSAGES = 2;
 
-  // On mount, assign a random animal type
+  // Add keyboard state
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  // On mount, set the default pet type (cat)
   useEffect(() => {
-    const animalTypes = [PetType.CAT, PetType.DOG, PetType.BUNNY];
-    const randomType = animalTypes[Math.floor(Math.random() * animalTypes.length)];
-    customizePet({ type: randomType });
+    customizePet({ type: PetType.CAT });
   }, []);
 
   // Trim old messages and keep only the most recent ones
@@ -102,6 +131,52 @@ export function HomeScreen() {
     }
   }, [isStreaming, streamingText]);
 
+  // Add keyboard listeners with layout animation
+  useEffect(() => {
+    // Create a smoother animation config
+    const smoothAnimConfig = {
+      duration: 300,
+      create: { 
+        type: LayoutAnimation.Types.easeInEaseOut, 
+        property: LayoutAnimation.Properties.opacity,
+      },
+      update: { 
+        type: LayoutAnimation.Types.easeInEaseOut,
+        springDamping: 0.7,
+      },
+    };
+
+    const keyboardWillShowListener = Platform.OS === 'ios' 
+      ? Keyboard.addListener('keyboardWillShow', () => {
+          LayoutAnimation.configureNext(smoothAnimConfig);
+          setKeyboardVisible(true);
+          // Scroll to the end to ensure latest messages are visible when keyboard opens
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        })
+      : Keyboard.addListener('keyboardDidShow', () => {
+          LayoutAnimation.configureNext(smoothAnimConfig);
+          setKeyboardVisible(true);
+          // Scroll to the end to ensure latest messages are visible when keyboard opens
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        });
+    
+    const keyboardWillHideListener = Platform.OS === 'ios'
+      ? Keyboard.addListener('keyboardWillHide', () => {
+          LayoutAnimation.configureNext(smoothAnimConfig);
+          setKeyboardVisible(false);
+        })
+      : Keyboard.addListener('keyboardDidHide', () => {
+          LayoutAnimation.configureNext(smoothAnimConfig);
+          setKeyboardVisible(false);
+        });
+
+    // Clean up listeners
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, []);
+
   const handleSendMessage = (text: string) => {
     // Add user message
     const userMessage: ChatMessage = {
@@ -122,33 +197,21 @@ export function HomeScreen() {
     }, 500);
   };
 
-  // Get more interesting random responses
+  // Get pet responses (now just a single set for the cat pet)
   const getRandomResponse = (input: string) => {
-    const petTypeResponses = {
-      [PetType.CAT]: [
-        `*purrs* I like talking about ${input}!`,
-        `Meow! That's interesting. Tell me more!`,
-        `*tilts head* I'm curious about ${input} too!`,
-        `*blinks slowly* ${input}? That sounds fun!`,
-        `If I could try ${input}, I would pounce on it!`,
-      ],
-      [PetType.DOG]: [
-        `*wags tail* I love talking about ${input}!`,
-        `Woof! That's awesome. Tell me more!`,
-        `*perks ears up* I'm excited about ${input} too!`,
-        `*jumps up* ${input}? That sounds amazing!`,
-        `If I could try ${input}, I would bring it right back to you!`,
-      ],
-      [PetType.BUNNY]: [
-        `*twitches nose* I'm interested in ${input}!`,
-        `*hops excitedly* That's fascinating. Tell me more!`,
-        `*wiggles ears* I want to know more about ${input}!`,
-        `*sits up tall* ${input}? That sounds wonderful!`,
-        `If I could try ${input}, I would hop all over it!`,
-      ],
-    };
+    const responses = [
+      `*purrs* I like talking about ${input}!`,
+      `Meow! That's interesting. Tell me more!`,
+      `*tilts head* I'm curious about ${input} too!`,
+      `*blinks slowly* ${input}? That sounds fun!`,
+      `If I could try ${input}, I would pounce on it!`,
+      `That's fascinating! Tell me more about ${input}.`,
+      `I've been thinking about ${input} too!`,
+      `${input} sounds like something I'd enjoy.`,
+      `*perks up* Ooh, ${input}? I like that!`,
+      `You always have the most interesting things to say about ${input}!`
+    ];
     
-    const responses = petTypeResponses[pet.type] || petTypeResponses[PetType.CAT];
     return responses[Math.floor(Math.random() * responses.length)];
   };
 
@@ -170,10 +233,10 @@ export function HomeScreen() {
   };
 
   const handleSettingsPress = () => {
-    // Change to a random pet type
-    const animalTypes = [PetType.CAT, PetType.DOG, PetType.BUNNY];
-    const randomType = animalTypes[Math.floor(Math.random() * animalTypes.length)];
-    customizePet({ type: randomType });
+    // Change pet's color instead of type
+    const colors = ['#E1EEBC', '#FFC0CB', '#ADD8E6', '#FFD700', '#98FB98']; 
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    customizePet({ color: randomColor });
   };
 
   const handleStatsPress = () => {
@@ -187,98 +250,117 @@ export function HomeScreen() {
       
       {/* Background gradient */}
       <LinearGradient
-        colors={[COLORS.primary, '#256E54']}
+        colors={['rgba(50, 142, 110, 1)', 'rgba(30, 100, 80, 1)']} 
         style={styles.backgroundGradient}
       />
       
-      {/* Header with settings */}
-      <View style={styles.header}>
-        <IconButton 
-          type="settings" 
-          onPress={handleSettingsPress} 
-        />
-        
-        <IconButton 
-          type="stats" 
-          onPress={handleStatsPress} 
-        />
-      </View>
-      
-      {/* Stats Icons */}
-      <View style={styles.statsContainer}>
-        <StatsIcon 
-          type="FOOD" 
-          value={pet.stats.hunger} 
-          onPress={() => handleStatIconPress('FOOD')}
-        />
-        <StatsIcon 
-          type="WATER" 
-          value={pet.stats.hydration} 
-          onPress={() => handleStatIconPress('WATER')}
-        />
-        <StatsIcon 
-          type="ACTIVITY" 
-          value={pet.stats.activity} 
-          onPress={() => handleStatIconPress('ACTIVITY')}
-        />
-        <StatsIcon 
-          type="MOOD" 
-          value={pet.stats.mood} 
-          onPress={() => handleStatIconPress('MOOD')}
-        />
-      </View>
-      
-      {/* Pet View */}
-      <View style={styles.petContainer}>
-        <PixelPet 
-          pet={pet} 
-          mood={getPetMood()}
-          isTalking={isTalking}
-        />
-      </View>
-      
-      {/* Chat Messages */}
-      <ScrollView 
-        ref={scrollViewRef}
-        style={styles.chatContainer}
-        contentContainerStyle={styles.chatContent}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'position'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 30}
+        contentContainerStyle={{ flex: 1 }}
       >
-        {messages.map((message, index) => {
-          // When we're about to remove messages, apply fade animation to older messages
-          const isOldMessage = messages.length > MAX_VISIBLE_MESSAGES && index === 0;
-          
-          return (
-            <Animated.View 
-              key={message.id}
-              style={[
-                styles.messageBubble,
-                message.sender === 'USER' ? styles.userMessage : styles.petMessage,
-                isOldMessage && { opacity: fadeAnim },
-              ]}
-            >
-              <Text style={[
-                styles.messageText,
-                message.sender === 'USER' ? styles.userMessageText : styles.petMessageText
-              ]}>
-                {message.text}
-              </Text>
-            </Animated.View>
-          );
-        })}
-        
-        {/* Streaming message */}
-        {isStreaming && (
-          <View style={[styles.messageBubble, styles.petMessage]}>
-            <Text style={[styles.messageText, styles.petMessageText]}>
-              {streamingText}
-              <Text style={styles.cursor}>|</Text>
-            </Text>
+        {/* Header & Title */}
+        <View style={styles.header}>
+          <Text style={[
+            styles.title,
+            keyboardVisible && styles.compactTitle
+          ]}>DigiPal</Text>
+          <View style={{flexDirection: 'row'}}>
+            <IconButton type="stats" onPress={handleStatsPress} />
+            <IconButton type="settings" onPress={handleSettingsPress} />
           </View>
-        )}
-      </ScrollView>
-      
-      {/* Chat Input */}
-      <ChatInput onSendMessage={handleSendMessage} />
+        </View>
+        
+        {/* Stats Icons */}
+        <View style={[
+          styles.statsContainer,
+          keyboardVisible && styles.compactStatsContainer
+        ]}>
+          <StatsIcon 
+            type="FOOD" 
+            value={pet.stats.hunger} 
+            onPress={() => handleStatIconPress('FOOD')}
+          />
+          <StatsIcon 
+            type="WATER" 
+            value={pet.stats.hydration} 
+            onPress={() => handleStatIconPress('WATER')}
+          />
+          <StatsIcon 
+            type="ACTIVITY" 
+            value={pet.stats.activity} 
+            onPress={() => handleStatIconPress('ACTIVITY')}
+          />
+          <StatsIcon 
+            type="MOOD" 
+            value={pet.stats.mood} 
+            onPress={() => handleStatIconPress('MOOD')}
+          />
+        </View>
+        
+        {/* Pet View */}
+        <View style={[
+          styles.petContainer,
+          keyboardVisible && styles.compactPetContainer
+        ]}>
+          <PixelPet 
+            pet={pet} 
+            mood={getPetMood()}
+            isTalking={isTalking}
+          />
+        </View>
+        
+        {/* Chat Messages */}
+        <ScrollView 
+          ref={scrollViewRef}
+          style={styles.chatContainer}
+          contentContainerStyle={styles.chatContent}
+        >
+          {messages.map((message, index) => {
+            // When we're about to remove messages, apply fade animation to older messages
+            const isOldMessage = messages.length > MAX_VISIBLE_MESSAGES && index === 0;
+            
+            return (
+              <Animated.View 
+                key={message.id}
+                style={[
+                  styles.messageBubble,
+                  message.sender === 'USER' ? styles.userMessage : styles.petMessage,
+                  isOldMessage && { opacity: fadeAnim },
+                ]}
+              >
+                <Text style={[
+                  styles.messageText,
+                  message.sender === 'USER' ? styles.userMessageText : styles.petMessageText
+                ]}>
+                  {message.text}
+                </Text>
+              </Animated.View>
+            );
+          })}
+          
+          {/* Streaming message */}
+          {isStreaming && (
+            <View style={[styles.messageBubble, styles.petMessage]}>
+              <Text style={[styles.messageText, styles.petMessageText]}>
+                {streamingText}
+                <Animated.Text 
+                  style={[
+                    styles.cursor, 
+                    { opacity: fadeAnim }
+                  ]}
+                >
+                  █
+                </Animated.Text>
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+        
+        {/* Chat Input */}
+        <ChatInput onSendMessage={handleSendMessage} />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -298,17 +380,58 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.md,
+  },
+  compactHeader: {
+    paddingTop: SPACING.sm,
+  },
+  title: {
+    fontFamily: FONTS.title,
+    fontSize: 28,
+    color: COLORS.secondary,
+    letterSpacing: 3,
+    textShadowColor: 'rgba(0, 0, 0, 0.7)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 0,
+    textTransform: 'uppercase',
+    marginVertical: SPACING.sm,
+    // Add a border as an outline - typical of retro games
+    borderColor: 'rgba(0, 0, 0, 0.3)',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  compactTitle: {
+    fontSize: 20,
+    marginVertical: SPACING.xs,
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-evenly',
     paddingVertical: SPACING.lg,
+    alignItems: 'center',
+    width: '100%',
+  },
+  compactStatsContainer: {
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.xs,
   },
   petContainer: {
     alignItems: 'center',
-    marginVertical: SPACING.md,
+    marginVertical: SPACING.md + 80,
+    height: SIZES.petSize,
+    justifyContent: 'center',
+    alignSelf: 'center',
+    width: '100%',
+  },
+  compactPetContainer: {
+    marginVertical: SPACING.sm,
+    transform: [{ scale: 0.8 }],
+    height: SIZES.petSize * 0.8,
   },
   chatContainer: {
     flex: 1,
@@ -319,41 +442,61 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.xs,
     justifyContent: 'flex-end',
+    flexGrow: 1,
   },
   messageBubble: {
-    borderRadius: SIZES.borderRadius,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    marginBottom: SPACING.sm,
-    maxWidth: '80%',
+    borderRadius: 8,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    marginBottom: SPACING.md,
+    maxWidth: '85%',
     elevation: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 0,
+    // Pixelated border style
+    borderWidth: 3,
+    borderStyle: 'solid',
   },
   userMessage: {
     backgroundColor: COLORS.secondary,
     alignSelf: 'flex-end',
     borderBottomRightRadius: 0,
+    borderColor: adjustColorBrightness(COLORS.secondary, -50),
   },
   petMessage: {
     backgroundColor: '#FFFFFF',
     alignSelf: 'flex-start',
     borderBottomLeftRadius: 0,
+    borderColor: '#CCCCCC',
   },
   messageText: {
-    fontFamily: FONTS.regular,
-    fontSize: 18,
+    fontFamily: FONTS.retro,
+    fontSize: 12,
+    lineHeight: 20,
+    letterSpacing: 2,
+    marginBottom: 4,
+    color: '#333333',
   },
   userMessageText: {
-    color: '#333333',
+    textShadowColor: 'rgba(50, 142, 110, 0.4)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 0,
   },
   petMessageText: {
-    color: '#333333',
+    textShadowColor: 'rgba(225, 238, 188, 0.6)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 0,
   },
   cursor: {
-    opacity: 0.7,
+    opacity: 1,
+    fontFamily: FONTS.retro,
+    fontWeight: 'bold',
+    fontSize: 14,
     color: COLORS.primary,
-  }
+    textShadowColor: 'rgba(50, 142, 110, 0.7)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 0,
+  },
 }); 
