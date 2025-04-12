@@ -695,9 +695,9 @@ function renderCactus(pixels: PixelData[], bodyColor: string, borderColor: strin
         // Eyes - bigger, more centered, with happy expression
         [5, 3], [8, 3],
         
-        // Open mouth while talking - clearly open with smile shape
-        [5, 5], [7, 5], // Smile corners
-        [5, 6], [6, 7], [7, 6] // Deeper open mouth (forms a cavity)
+        // Happy talking mouth - smiling while open
+        [5, 5], [6, 6], [7, 5], // Smile shape
+        [6, 5] // Open mouth center
       ]
     : [
         // Eyes - bigger, more centered

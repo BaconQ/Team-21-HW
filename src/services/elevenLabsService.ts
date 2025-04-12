@@ -6,7 +6,7 @@ import Constants from 'expo-constants';
 const API_KEY = 'sk_d9ff42b69a9ce1aa5f86fa6e1d888570d3d830a1bddb0165';
 
 // Default voice settings
-const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Bella
+const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; // Changed from Bella
 
 // Cache for audio recordings
 const audioCache = new Map<string, Audio.Sound>();
