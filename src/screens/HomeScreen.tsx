@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Keyboard, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager, Easing } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Keyboard, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -69,9 +69,8 @@ export function HomeScreen() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const MAX_VISIBLE_MESSAGES = 2;
 
-  // Add keyboard animation value for smoother transitions
+  // Add keyboard state
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const keyboardTransition = useRef(new Animated.Value(0)).current;
 
   // On mount, set the default pet type (cat)
   useEffect(() => {
@@ -132,54 +131,43 @@ export function HomeScreen() {
     }
   }, [isStreaming, streamingText]);
 
-  // Replace layout animation with animated values for smoother transitions
+  // Add keyboard listeners with layout animation
   useEffect(() => {
+    // Create a smoother animation config
+    const smoothAnimConfig = {
+      duration: 300,
+      create: { 
+        type: LayoutAnimation.Types.easeInEaseOut, 
+        property: LayoutAnimation.Properties.opacity,
+      },
+      update: { 
+        type: LayoutAnimation.Types.easeInEaseOut,
+        springDamping: 0.7,
+      },
+    };
+
     const keyboardWillShowListener = Platform.OS === 'ios' 
       ? Keyboard.addListener('keyboardWillShow', () => {
+          LayoutAnimation.configureNext(smoothAnimConfig);
           setKeyboardVisible(true);
-          Animated.timing(keyboardTransition, {
-            toValue: 1,
-            duration: 250, // Slightly quicker
-            useNativeDriver: false,
-            easing: Easing.bezier(0.17, 0.59, 0.4, 0.77) // More natural easing
-          }).start();
-          
           // Scroll to the end to ensure latest messages are visible when keyboard opens
           scrollViewRef.current?.scrollToEnd({ animated: true });
         })
       : Keyboard.addListener('keyboardDidShow', () => {
+          LayoutAnimation.configureNext(smoothAnimConfig);
           setKeyboardVisible(true);
-          Animated.timing(keyboardTransition, {
-            toValue: 1,
-            duration: 250, // Slightly quicker
-            useNativeDriver: false,
-            easing: Easing.bezier(0.17, 0.59, 0.4, 0.77) // More natural easing
-          }).start();
-          
           // Scroll to the end to ensure latest messages are visible when keyboard opens
           scrollViewRef.current?.scrollToEnd({ animated: true });
         });
     
     const keyboardWillHideListener = Platform.OS === 'ios'
       ? Keyboard.addListener('keyboardWillHide', () => {
-          Animated.timing(keyboardTransition, {
-            toValue: 0,
-            duration: 250, // Slightly quicker
-            useNativeDriver: false,
-            easing: Easing.bezier(0.17, 0.59, 0.4, 0.77) // More natural easing
-          }).start(() => {
-            setKeyboardVisible(false);
-          });
+          LayoutAnimation.configureNext(smoothAnimConfig);
+          setKeyboardVisible(false);
         })
       : Keyboard.addListener('keyboardDidHide', () => {
-          Animated.timing(keyboardTransition, {
-            toValue: 0,
-            duration: 250, // Slightly quicker
-            useNativeDriver: false,
-            easing: Easing.bezier(0.17, 0.59, 0.4, 0.77) // More natural easing
-          }).start(() => {
-            setKeyboardVisible(false);
-          });
+          LayoutAnimation.configureNext(smoothAnimConfig);
+          setKeyboardVisible(false);
         });
 
     // Clean up listeners
@@ -187,7 +175,7 @@ export function HomeScreen() {
       keyboardWillShowListener.remove();
       keyboardWillHideListener.remove();
     };
-  }, [keyboardTransition]);
+  }, []);
 
   const handleSendMessage = (text: string) => {
     // Add user message
@@ -256,47 +244,6 @@ export function HomeScreen() {
     console.log('Stats pressed');
   };
 
-  // Calculate animated styles
-  const headerStyle = {
-    paddingTop: keyboardTransition.interpolate({
-      inputRange: [0, 1],
-      outputRange: [SPACING.md, SPACING.sm]
-    })
-  };
-
-  const titleStyle = {
-    fontSize: keyboardTransition.interpolate({
-      inputRange: [0, 1],
-      outputRange: [28, 20]
-    }),
-    marginVertical: keyboardTransition.interpolate({
-      inputRange: [0, 1],
-      outputRange: [SPACING.sm, SPACING.xs]
-    })
-  };
-
-  const statsStyle = {
-    paddingVertical: keyboardTransition.interpolate({
-      inputRange: [0, 1],
-      outputRange: [SPACING.lg, SPACING.sm]
-    })
-  };
-
-  const petScale = keyboardTransition.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 0.8]
-  });
-
-  const petMargin = keyboardTransition.interpolate({
-    inputRange: [0, 1],
-    outputRange: [SPACING.md + 80, SPACING.sm]
-  });
-
-  const petContainerStyle = {
-    marginVertical: petMargin,
-    transform: [{ scale: petScale }]
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -314,18 +261,22 @@ export function HomeScreen() {
         contentContainerStyle={{ flex: 1 }}
       >
         {/* Header & Title */}
-        <Animated.View style={[styles.header, headerStyle]}>
-          <Animated.Text style={[styles.title, titleStyle]}>
-            DigiPal
-          </Animated.Text>
+        <View style={styles.header}>
+          <Text style={[
+            styles.title,
+            keyboardVisible && styles.compactTitle
+          ]}>DigiPal</Text>
           <View style={{flexDirection: 'row'}}>
             <IconButton type="stats" onPress={handleStatsPress} />
             <IconButton type="settings" onPress={handleSettingsPress} />
           </View>
-        </Animated.View>
+        </View>
         
         {/* Stats Icons */}
-        <Animated.View style={[styles.statsContainer, statsStyle]}>
+        <View style={[
+          styles.statsContainer,
+          keyboardVisible && styles.compactStatsContainer
+        ]}>
           <StatsIcon 
             type="FOOD" 
             value={pet.stats.hunger} 
@@ -346,16 +297,19 @@ export function HomeScreen() {
             value={pet.stats.mood} 
             onPress={() => handleStatIconPress('MOOD')}
           />
-        </Animated.View>
+        </View>
         
         {/* Pet View */}
-        <Animated.View style={[styles.petContainer, petContainerStyle]}>
+        <View style={[
+          styles.petContainer,
+          keyboardVisible && styles.compactPetContainer
+        ]}>
           <PixelPet 
             pet={pet} 
             mood={getPetMood()}
             isTalking={isTalking}
           />
-        </Animated.View>
+        </View>
         
         {/* Chat Messages */}
         <ScrollView 
@@ -428,15 +382,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+  },
+  compactHeader: {
+    paddingTop: SPACING.sm,
   },
   title: {
     fontFamily: FONTS.title,
+    fontSize: 28,
     color: COLORS.secondary,
     letterSpacing: 3,
     textShadowColor: 'rgba(0, 0, 0, 0.7)',
     textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 0,
     textTransform: 'uppercase',
+    marginVertical: SPACING.sm,
     // Add a border as an outline - typical of retro games
     borderColor: 'rgba(0, 0, 0, 0.3)',
     borderWidth: 1,
@@ -445,18 +405,33 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     backgroundColor: 'rgba(0, 0, 0, 0.1)',
   },
+  compactTitle: {
+    fontSize: 20,
+    marginVertical: SPACING.xs,
+  },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-evenly',
+    paddingVertical: SPACING.lg,
     alignItems: 'center',
     width: '100%',
   },
+  compactStatsContainer: {
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
   petContainer: {
     alignItems: 'center',
+    marginVertical: SPACING.md + 80,
     height: SIZES.petSize,
     justifyContent: 'center',
     alignSelf: 'center',
     width: '100%',
+  },
+  compactPetContainer: {
+    marginVertical: SPACING.sm,
+    transform: [{ scale: 0.8 }],
+    height: SIZES.petSize * 0.8,
   },
   chatContainer: {
     flex: 1,
