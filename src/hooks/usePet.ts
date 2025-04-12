@@ -6,8 +6,8 @@ import { Pet, PetStats, StatsLog } from '../types/index';
 const DEFAULT_PET: Pet = {
   id: '1',
   name: 'DigiPal',
-  type: PetType.CAT,
-  color: '#E1EEBC',
+  type: PetType.CACTUS,
+  color: '#5DAE60', // Green color for cactus
   stats: {
     hunger: 100,
     hydration: 100,

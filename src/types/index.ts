@@ -12,6 +12,8 @@ export enum PetType {
   CAT = 'cat',
   DOG = 'dog',
   BUNNY = 'bunny',
+  FROG = 'frog',
+  CACTUS = 'cactus',
 }
 
 export interface PetStats {
@@ -37,6 +39,7 @@ export interface ChatMessage {
   audioUrl?: string; // URL to the audio file for this message
   isPlaying?: boolean; // Whether the audio is currently playing
   isLoading?: boolean; // Whether the message is loading (waiting for audio)
+  isTyping?: boolean; // Whether the message is currently being typed
 }
 
 export interface StatChange {

@@ -12,6 +12,7 @@ import { PetType } from '../types';
 import { ChatMessage } from '../types/index';
 import { usePet } from '../hooks/usePet';
 import { sendMessageToLLM } from '../services/llmService';
+import { speakText, stopSpeech } from '../services/elevenLabsService';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android') {
@@ -54,6 +55,10 @@ export function HomeScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTalking, setIsTalking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(true); // Enable TTS by default
+  const [typingMessage, setTypingMessage] = useState<{text: string, id: string} | null>(null);
+  const [typedText, setTypedText] = useState('');
+  const typingSpeed = 50; // milliseconds per character
   
   const scrollViewRef = useRef<ScrollView>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -64,6 +69,10 @@ export function HomeScreen() {
 
   // Animation for loading dots
   const loadingAnim = useRef(new Animated.Value(0.3)).current;
+  
+  // Add refs for timers so we can clear them
+  const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const messageQueueRef = useRef<{text: string, id: string}[]>([]);
   
   // Set up loading animation
   useEffect(() => {
@@ -91,10 +100,127 @@ export function HomeScreen() {
 
   // On mount, set the default pet type and get initial greeting
   useEffect(() => {
-    customizePet({ type: PetType.CAT });
+    customizePet({ type: PetType.CACTUS });
     
     // Get initial greeting
     getInitialGreeting();
+  }, []);
+
+  // Handle the typing effect
+  useEffect(() => {
+    if (typingMessage) {
+      // Clear the text first to prevent gibberish
+      setTypedText('');
+      setIsTalking(true);
+      let currentIndex = 0;
+      
+      if (ttsEnabled) {
+        // Start TTS before typing begins
+        console.log(`Starting TTS for message ${typingMessage.id}`);
+        
+        // Longer delay before starting TTS to ensure proper initialization
+        setTimeout(() => {
+          // Start speech with the text
+          speakText(typingMessage.text, { 
+            messageId: typingMessage.id 
+          }).catch(err => console.error("Error speaking text:", err));
+          
+          // Longer delay before typing to allow audio to start playing first
+          // Increased from 300ms to 800ms to account for audio processing time
+          setTimeout(() => {
+            const typeNextChar = () => {
+              if (currentIndex < typingMessage.text.length) {
+                setTypedText(typingMessage.text.substring(0, currentIndex + 1));
+                currentIndex++;
+                // Slower typing speed to better match speech
+                typingTimerRef.current = setTimeout(typeNextChar, typingSpeed);
+              } else {
+                // Typing finished
+                setIsTalking(false);
+                
+                // Update the message in our message list to show as complete
+                setMessages(prev => prev.map(msg => 
+                  msg.id === typingMessage.id 
+                    ? {...msg, text: typingMessage.text, isTyping: false} 
+                    : msg
+                ));
+                
+                // Wait a bit before moving to the next message
+                setTimeout(() => {
+                  setTypingMessage(null);
+                  
+                  // Check if we have more messages in the queue
+                  if (messageQueueRef.current.length > 0) {
+                    const nextMessage = messageQueueRef.current.shift();
+                    if (nextMessage) {
+                      setTimeout(() => {
+                        setTypingMessage(nextMessage);
+                      }, 800); // Longer delay between messages
+                    }
+                  }
+                }, 200);
+              }
+            };
+            
+            // Start typing
+            typeNextChar();
+          }, 800); // Increased delay to wait for audio to start playing
+        }, 300); // Shorter initial delay as audio needs time to load
+      } else {
+        // If TTS is disabled, just do the typing animation without the delay
+        const typeNextChar = () => {
+          if (currentIndex < typingMessage.text.length) {
+            setTypedText(typingMessage.text.substring(0, currentIndex + 1));
+            currentIndex++;
+            typingTimerRef.current = setTimeout(typeNextChar, typingSpeed);
+          } else {
+            // Typing finished
+            setIsTalking(false);
+            
+            // Short delay before moving to the next message
+            setTimeout(() => {
+              setTypingMessage(null);
+              
+              // Update the message in our message list to show as complete
+              setMessages(prev => prev.map(msg => 
+                msg.id === typingMessage.id 
+                  ? {...msg, text: typingMessage.text, isTyping: false} 
+                  : msg
+              ));
+              
+              // Check if we have more messages in the queue
+              if (messageQueueRef.current.length > 0) {
+                const nextMessage = messageQueueRef.current.shift();
+                if (nextMessage) {
+                  setTimeout(() => {
+                    setTypingMessage(nextMessage);
+                  }, 500); // Small delay between messages
+                }
+              }
+            }, 200);
+          }
+        };
+        
+        // Start typing immediately if TTS is off
+        typeNextChar();
+      }
+      
+      // Cleanup
+      return () => {
+        if (typingTimerRef.current) {
+          clearTimeout(typingTimerRef.current);
+        }
+      };
+    }
+  }, [typingMessage, ttsEnabled]);
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+      }
+    };
   }, []);
 
   // Fetch initial greeting from LLM
@@ -119,15 +245,35 @@ export function HomeScreen() {
         applyStatChanges(llmResponse.changes);
       }
       
-      // Replace loading message with actual messages
+      // Clear loading message and typed text
+      setMessages([]);
+      setTypedText('');
+      
+      // Queue up the response messages
       const initialMessages = llmResponse.messages.map((text, index) => ({
-        id: `initial-${index}`,
         text,
-        sender: 'PET' as const,
-        timestamp: new Date(Date.now() + index * 100),
+        id: `initial-${index}`,
       }));
       
-      setMessages(initialMessages);
+      // Add first message to typing state and rest to queue
+      if (initialMessages.length > 0) {
+        // Queue the rest of the messages
+        messageQueueRef.current = initialMessages.slice(1);
+        
+        // Add an empty placeholder for the typing message
+        setMessages([{
+          id: initialMessages[0].id,
+          text: '',
+          sender: 'PET',
+          timestamp: new Date(),
+          isTyping: true
+        }]);
+        
+        // Small delay before starting typing
+        setTimeout(() => {
+          setTypingMessage(initialMessages[0]);
+        }, 100);
+      }
     } catch (error) {
       console.error("Error getting initial greeting:", error);
       
@@ -214,6 +360,27 @@ export function HomeScreen() {
   }, []);
 
   const handleSendMessage = async (text: string) => {
+    // Stop any current speech and typing
+    if (ttsEnabled) {
+      await stopSpeech();
+    }
+    
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+    }
+    
+    // Clear the typed text
+    setTypedText('');
+    
+    // Reset typing state
+    setTypingMessage(null);
+    messageQueueRef.current = [];
+    
+    // Update any partially typed messages to complete
+    setMessages(prev => prev.map(msg => 
+      msg.isTyping ? {...msg, text: (msg.text || ""), isTyping: false} : msg
+    ));
+    
     // Add user message
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -222,11 +389,11 @@ export function HomeScreen() {
       timestamp: new Date(),
     };
     
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     
     // Add a temporary thinking message
     const thinkingId = `thinking-${Date.now()}`;
-    setMessages((prev) => [
+    setMessages(prev => [
       ...prev, 
       {
         id: thinkingId,
@@ -238,38 +405,48 @@ export function HomeScreen() {
     ]);
     
     try {
-      // Show talking animation
-      setIsTalking(true);
-      
       // Call the LLM API
       const llmResponse = await sendMessageToLLM(text);
       
-      // Hide talking animation
-      setIsTalking(false);
-      
       // Remove the thinking message
-      setMessages((prev) => prev.filter(msg => msg.id !== thinkingId));
+      setMessages(prev => prev.filter(msg => msg.id !== thinkingId));
       
       // Apply any stat changes returned by the API
       if (llmResponse.changes && llmResponse.changes.length > 0) {
         applyStatChanges(llmResponse.changes);
       }
       
-      // Add all response messages
+      // Prepare all response messages
       const responseMessages = llmResponse.messages.map((messageText, index) => ({
-        id: `${Date.now()}-${index}`,
         text: messageText,
-        sender: 'PET' as const,
-        timestamp: new Date(Date.now() + index * 100),
+        id: `${Date.now()}-${index}`,
       }));
       
-      setMessages(prev => [...prev, ...responseMessages]);
+      // Add first message to typing state and rest to queue
+      if (responseMessages.length > 0) {
+        // Set the first message for typing
+        setTimeout(() => {
+          setTypingMessage(responseMessages[0]);
+        }, 100); // Small delay to allow state to update
+        
+        // Queue the rest
+        messageQueueRef.current = responseMessages.slice(1);
+        
+        // Add an empty placeholder for the typing message
+        setMessages(prev => [...prev, {
+          id: responseMessages[0].id,
+          text: '',
+          sender: 'PET',
+          timestamp: new Date(),
+          isTyping: true
+        }]);
+      }
       
     } catch (error) {
       console.error("Error processing LLM response:", error);
       
       // Remove thinking bubble
-      setMessages((prev) => prev.filter(msg => msg.id !== thinkingId));
+      setMessages(prev => prev.filter(msg => msg.id !== thinkingId));
       
       // Add a fallback message if something goes wrong
       const errorMessage: ChatMessage = {
@@ -280,9 +457,6 @@ export function HomeScreen() {
       };
       
       setMessages(prev => [...prev, errorMessage]);
-      
-      // Hide talking animation
-      setIsTalking(false);
     }
   };
 
@@ -304,10 +478,13 @@ export function HomeScreen() {
   };
 
   const handleSettingsPress = () => {
-    // Change pet's color
-    const colors = ['#E1EEBC', '#FFC0CB', '#ADD8E6', '#FFD700', '#98FB98']; 
-    const randomColor = colors[Math.floor(Math.random() * colors.length)];
-    customizePet({ color: randomColor });
+    // Toggle TTS on/off
+    setTtsEnabled(!ttsEnabled);
+    
+    // If turning off, stop any current speech
+    if (ttsEnabled) {
+      stopSpeech().catch(err => console.error("Error stopping speech:", err));
+    }
   };
 
   const handleStatsPress = () => {
@@ -390,6 +567,8 @@ export function HomeScreen() {
           {messages.map((message, index) => {
             // When we're about to remove messages, apply fade animation to older messages
             const isOldMessage = messages.length > MAX_VISIBLE_MESSAGES && index === 0;
+            // Check if this message is currently being typed
+            const isActiveTypingMessage = message.isTyping && typingMessage && message.id === typingMessage.id;
             
             return (
               <Animated.View 
@@ -412,6 +591,13 @@ export function HomeScreen() {
                       . . .
                     </Animated.Text>
                   </View>
+                ) : isActiveTypingMessage ? (
+                  <Text style={[
+                    styles.messageText,
+                    styles.petMessageText
+                  ]}>
+                    {typedText || ''}{typedText && typedText.length > 0 && typedText.length < typingMessage.text.length ? '_' : ''}
+                  </Text>
                 ) : (
                   <Text style={[
                     styles.messageText,

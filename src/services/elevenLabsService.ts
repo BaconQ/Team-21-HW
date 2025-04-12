@@ -12,6 +12,10 @@ const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Bella
 const audioCache = new Map<string, Audio.Sound>();
 const audioFiles = new Set<string>();
 const loadingStates = new Map<string, boolean>();
+const isPlayingMap = new Map<string, boolean>();
+
+// Debug flag - set to true to see more logs
+const DEBUG = true;
 
 interface TTSOptions {
   voiceId?: string;
@@ -28,20 +32,59 @@ export function isAudioLoading(messageId: string): boolean {
 }
 
 /**
- * Safe sound operation - checks if sound is loaded before operation
+ * Check if a specific message is currently being played
  */
-async function safePlaySound(sound: Audio.Sound): Promise<void> {
+export function isAudioPlaying(messageId: string): boolean {
+  return isPlayingMap.get(messageId) === true;
+}
+
+/**
+ * Safe play operation - checks if sound is loaded before playing
+ */
+async function safePlaySound(sound: Audio.Sound, messageId?: string): Promise<void> {
   try {
-    // Check if sound is loaded before playing
+    // Check if sound is loaded
+    const status = await sound.getStatusAsync();
+    
+    if (!status.isLoaded) {
+      console.warn('Attempted to play an unloaded sound');
+      return;
+    }
+    
+    // Start from the beginning
+    await sound.setPositionAsync(0);
+    
+    // Set volume to max
+    await sound.setVolumeAsync(1.0);
+    
+    // Play the sound
+    if (messageId) isPlayingMap.set(messageId, true);
+    await sound.playAsync();
+    
+    // Add listener for playback status
+    sound.setOnPlaybackStatusUpdate((playbackStatus) => {
+      if (playbackStatus.isLoaded && playbackStatus.didJustFinish) {
+        if (DEBUG) console.log('Audio finished playing');
+        if (messageId) isPlayingMap.set(messageId, false);
+      }
+    });
+  } catch (error) {
+    console.error('Error playing sound:', error);
+    if (messageId) isPlayingMap.set(messageId, false);
+  }
+}
+
+/**
+ * Safe unload operation - checks if sound is loaded before unloading
+ */
+async function safeUnloadSound(sound: Audio.Sound): Promise<void> {
+  try {
     const status = await sound.getStatusAsync();
     if (status.isLoaded) {
-      await sound.playAsync();
-    } else {
-      throw new Error('Sound not loaded');
+      await sound.unloadAsync();
     }
   } catch (error) {
-    console.warn('Error playing sound:', error);
-    // Don't rethrow, just log warning
+    console.warn('Error unloading sound:', error);
   }
 }
 
@@ -57,22 +100,6 @@ async function safeStopSound(sound: Audio.Sound): Promise<void> {
     }
   } catch (error) {
     console.warn('Error stopping sound:', error);
-    // Don't rethrow, just log warning
-  }
-}
-
-/**
- * Safe unload operation - checks if sound is loaded before unloading
- */
-async function safeUnloadSound(sound: Audio.Sound): Promise<void> {
-  try {
-    // Check if sound is loaded before unloading
-    const status = await sound.getStatusAsync();
-    if (status.isLoaded) {
-      await sound.unloadAsync();
-    }
-  } catch (error) {
-    console.warn('Error unloading sound:', error);
     // Don't rethrow, just log warning
   }
 }
@@ -110,11 +137,13 @@ export async function synthesizeSpeech(
     // Set loading state for this message
     loadingStates.set(messageId, true);
     
+    if (DEBUG) console.log(`Synthesizing speech for message "${messageId}": "${text.substring(0, 30)}..."`);
+    
     // Create cache key
     const voiceId = options.voiceId || DEFAULT_VOICE_ID;
     const stability = options.stability || 0.5;
     const similarityBoost = options.similarityBoost || 0.75;
-    const cacheKey = `${text}-${voiceId}-${stability}-${similarityBoost}`;
+    const cacheKey = `${text.substring(0, 50)}`; // Shorter cache key for better performance
     
     // Check cache
     if (audioCache.has(cacheKey)) {
@@ -124,6 +153,7 @@ export async function synthesizeSpeech(
           // Verify sound is loaded
           const status = await sound.getStatusAsync();
           if (status.isLoaded) {
+            if (DEBUG) console.log('Using cached audio');
             loadingStates.set(messageId, false);
             return sound;
           } else {
@@ -137,16 +167,70 @@ export async function synthesizeSpeech(
       }
     }
     
-    // Create a temporary file path
-    const fileUri = `${FileSystem.cacheDirectory}speech-${Date.now()}.mp3`;
-    
     try {
-      // Try a simpler approach - use a system sound for all messages
-      // This guarantees we'll have working audio
-      const sound = await getSystemSound();
+      if (DEBUG) console.log('Making ElevenLabs API request with POST');
+      
+      // Use the standard API endpoint with POST
+      const endpoint = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+      
+      // Make API request
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Accept': 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': API_KEY,
+        },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_monolingual_v1',
+          voice_settings: {
+            stability,
+            similarity_boost: similarityBoost,
+          },
+        }),
+      });
+      
+      if (!response.ok) {
+        console.error(`ElevenLabs API error: ${response.status}`);
+        throw new Error(`Failed to get audio: ${response.status}`);
+      }
+      
+      // Download the audio file
+      const tempFile = `${FileSystem.cacheDirectory}speech-${Date.now()}.mp3`;
+      
+      // Get the blob directly from the response
+      const audioBlob = await response.blob();
+      
+      // Convert to base64
+      const reader = new FileReader();
+      reader.readAsDataURL(audioBlob);
+      
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          // Remove the data URL prefix
+          const base64 = dataUrl.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+      });
+      
+      // Write the base64 data to a file
+      await FileSystem.writeAsStringAsync(tempFile, base64Data, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      
+      if (DEBUG) console.log('Audio file saved, loading sound');
+      
+      // Load the sound
+      const sound = new Audio.Sound();
+      await sound.loadAsync({ uri: tempFile });
+      
+      if (DEBUG) console.log('Sound loaded successfully');
       
       // Keep track of the file to clean up later
-      audioFiles.add(fileUri);
+      audioFiles.add(tempFile);
       
       // Cache the sound
       audioCache.set(cacheKey, sound);
@@ -155,80 +239,52 @@ export async function synthesizeSpeech(
       loadingStates.set(messageId, false);
       
       return sound;
+    } catch (loadError) {
+      console.error('Error with ElevenLabs API:', loadError);
       
-      // NOTE: The below implementation would use ElevenLabs in a production app
-      // but for debugging, we're using a simple system sound to fix errors
-      /*
-      // Use fetch directly to get audio data
-      const response = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-        {
-          method: 'POST',
-          headers: {
-            'Accept': 'audio/mpeg',
-            'Content-Type': 'application/json',
-            'xi-api-key': API_KEY,
-          },
-          body: JSON.stringify({
-            text,
-            model_id: 'eleven_monolingual_v1',
-            voice_settings: {
-              stability,
-              similarity_boost: similarityBoost,
-            },
-          }),
-        }
-      );
+      if (DEBUG) console.log('Creating fallback sound');
       
-      if (!response.ok) {
-        throw new Error(`Failed to get audio: ${response.status}`);
-      }
+      // Create a proper fallback sound instead of using getSystemSound
+      const sound = new Audio.Sound();
       
-      // Get binary data - this can throw errors in some environments
-      let audioData;
       try {
-        // Try to get as blob first
-        const audioBlob = await response.blob();
+        // Create a very short MP3 file from raw data (1 second of silence)
+        const silenceFile = `${FileSystem.cacheDirectory}silence-${Date.now()}.mp3`;
         
-        // Get data URI for the blob (as base64)
-        const reader = new FileReader();
-        const base64Promise = new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(audioBlob);
-        });
+        // This is a minimal valid MP3 file (essentially silence)
+        const silenceMP3Base64 = 'SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAASAAAeMwAUFBQUFCIiIiIiIjAwMDAwMD4+Pj4+PkxMTExMTFpaWlpaWmhoaGhoaHd3d3d3d4aGhoaGhpSUlJSUlKCgoKCgoK+vr6+vr76+vr6+vsbGxsbGxtTU1NTU1OPj4+Pj4/Hz8/Pz8//////////////////////////////////////////////////////////////////8AAAA';
         
-        const dataUri = await base64Promise;
-        const base64Data = dataUri.split(',')[1];
-        
-        // Write the base64 data to a file
-        await FileSystem.writeAsStringAsync(fileUri, base64Data, {
+        // Write the base64 silence MP3 to a file
+        await FileSystem.writeAsStringAsync(silenceFile, silenceMP3Base64, {
           encoding: FileSystem.EncodingType.Base64,
         });
-      } catch (blobError) {
-        // If blob approach fails, try arrayBuffer instead
-        console.warn("Blob processing failed, trying alternative method:", blobError);
         
-        const arrayBuffer = await response.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-        const base64 = btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
+        // Load the silence MP3
+        await sound.loadAsync({ uri: silenceFile });
         
-        await FileSystem.writeAsStringAsync(fileUri, base64, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+        // Add to cache and tracking
+        audioFiles.add(silenceFile);
+        
+        if (DEBUG) console.log('Fallback sound created successfully');
+        
+        // Clear loading state
+        loadingStates.set(messageId, false);
+        
+        return sound;
+      } catch (fallbackError) {
+        console.error('Error creating fallback sound:', fallbackError);
+        
+        // Last resort - return unloaded sound but don't throw
+        loadingStates.set(messageId, false);
+        return sound;
       }
-      */
-    } catch (downloadError) {
-      console.error('Error downloading audio:', downloadError);
-      loadingStates.set(messageId, false);
-      
-      return getSystemSound();
     }
   } catch (error) {
     console.error('Error in synthesizeSpeech:', error);
     loadingStates.set(messageId, false);
     
-    return getSystemSound();
+    // Create an unloaded sound as a last resort
+    return new Audio.Sound();
   }
 }
 
@@ -239,41 +295,65 @@ export async function speakText(
   text: string, 
   options: TTSOptions = {}
 ): Promise<void> {
+  const messageId = options.messageId || 'default';
+  
   try {
-    // Create empty fallback file if it doesn't exist yet
-    const emptyFilePath = FileSystem.documentDirectory + 'empty.mp3';
-    const fileInfo = await FileSystem.getInfoAsync(emptyFilePath);
+    if (DEBUG) console.log(`Speaking text: "${text.substring(0, 30)}..." (messageId: ${messageId})`);
     
-    if (!fileInfo.exists) {
-      // Create an empty file for fallback scenarios
-      await FileSystem.writeAsStringAsync(emptyFilePath, '', {
-        encoding: FileSystem.EncodingType.UTF8
+    // Initialize audio mode settings first
+    try {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        allowsRecordingIOS: false,
       });
+      if (DEBUG) console.log('Audio mode set successfully');
+    } catch (audioModeError) {
+      console.warn('Error setting audio mode:', audioModeError);
     }
-    
-    // Initialize audio
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
-      shouldDuckAndroid: true,
-    });
     
     // Get sound object
     const sound = await synthesizeSpeech(text, options);
     
-    // Play the sound safely
-    await safePlaySound(sound);
+    if (DEBUG) console.log('Sound synthesized, playing now');
     
-    // Listen for playback finished
-    sound.setOnPlaybackStatusUpdate(status => {
-      if (status.isLoaded && status.didJustFinish) {
-        // Automatically unload when finished playing
-        safeUnloadSound(sound).catch(e => console.warn("Error unloading sound:", e));
+    try {
+      // First verify the sound is loaded
+      const status = await sound.getStatusAsync();
+      if (!status.isLoaded) {
+        if (DEBUG) console.log('Sound not loaded, cannot play');
+        return;
       }
-    });
+      
+      // Play the sound with explicit settings
+      await sound.setVolumeAsync(1.0);
+      await sound.setPositionAsync(0);
+      await sound.setRateAsync(1.0, false);
+      await sound.setIsMutedAsync(false);
+      
+      // Mark as playing
+      isPlayingMap.set(messageId, true);
+      
+      // Play the sound
+      await sound.playAsync();
+      
+      // Set up completion listener
+      sound.setOnPlaybackStatusUpdate(status => {
+        if (status.isLoaded && status.didJustFinish) {
+          if (DEBUG) console.log(`Sound finished playing for message ${messageId}`);
+          isPlayingMap.set(messageId, false);
+        }
+      });
+    } catch (playError) {
+      console.error('Error playing sound:', playError);
+      isPlayingMap.set(messageId, false);
+    }
   } catch (error) {
     console.error('Error in speakText:', error);
-    // Don't throw to prevent app crashes
+    // Clear playing state in case of error
+    isPlayingMap.set(messageId, false);
   }
 }
 
@@ -282,6 +362,8 @@ export async function speakText(
  */
 export async function stopSpeech(): Promise<void> {
   try {
+    if (DEBUG) console.log('Stopping all speech');
+    
     // Stop and unload all sounds
     for (const sound of audioCache.values()) {
       try {
@@ -297,6 +379,9 @@ export async function stopSpeech(): Promise<void> {
     
     // Clear all loading states
     loadingStates.clear();
+    
+    // Clear all playing states
+    isPlayingMap.clear();
     
     // Delete temporary files
     for (const file of audioFiles) {

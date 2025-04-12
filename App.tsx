@@ -7,10 +7,14 @@ import { PressStart2P_400Regular } from '@expo-google-fonts/press-start-2p';
 import { Silkscreen_400Regular } from '@expo-google-fonts/silkscreen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { HomeScreen } from './src/screens/HomeScreen';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { COLORS } from './src/components/theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
+
+const ONBOARDING_COMPLETE_KEY = 'digipal_onboarding_complete';
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
@@ -21,6 +25,7 @@ export default function App() {
 
   const [appIsReady, setAppIsReady] = useState(false);
   const [loadingText, setLoadingText] = useState('');
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
   const fullText = 'Loading DigiPal...';
   const charIndexRef = useRef(0);
   const blinkAnim = useRef(new Animated.Value(0)).current;
@@ -57,7 +62,11 @@ export default function App() {
   useEffect(() => {
     async function prepare() {
       try {
-        // Pre-load any resources or data here
+        // Check if onboarding has been completed
+        const onboardingStatus = await AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY);
+        setOnboardingComplete(onboardingStatus === 'true');
+
+        // Pre-load any other resources or data here
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (e) {
         console.warn('Error loading app resources:', e);
@@ -69,6 +78,16 @@ export default function App() {
 
     prepare();
   }, []);
+
+  const handleOnboardingComplete = async () => {
+    // Mark onboarding as complete
+    try {
+      await AsyncStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
+      setOnboardingComplete(true);
+    } catch (e) {
+      console.warn('Error saving onboarding status:', e);
+    }
+  };
 
   const onLayoutRootView = useCallback(async () => {
     if (appIsReady && fontsLoaded) {
@@ -100,7 +119,11 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <View style={styles.container} onLayout={onLayoutRootView}>
-        <HomeScreen />
+        {onboardingComplete ? (
+          <HomeScreen />
+        ) : (
+          <OnboardingScreen onComplete={handleOnboardingComplete} />
+        )}
         <StatusBar style="light" />
       </View>
     </SafeAreaProvider>
